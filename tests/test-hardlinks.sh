@@ -173,4 +173,50 @@ grep relink merged/rl_file
 umount merged
 rm -rf lower upper workdir merged
 
+# ========================================
+# Test 9: Lower-layer hardlinks survive chown+unlink+link cycle
+# (simulates containers/storage ID-mapped copy for rootless containers)
+# ========================================
+echo "=== Test 9: Lower-layer hardlinks chown+unlink+link ==="
+mkdir -p lower/usr/bin upper workdir merged
+
+# Create hardlinked files in the lower layer (like perl/perl5.36.0 in Debian)
+echo "binary_content" > lower/usr/bin/perl5.36.0
+ln lower/usr/bin/perl5.36.0 lower/usr/bin/perl
+
+# Verify they share the same inode in the lower layer
+test "$(stat -c %i lower/usr/bin/perl)" = "$(stat -c %i lower/usr/bin/perl5.36.0)"
+
+fuse-overlayfs -o lowerdir=lower,upperdir=upper,workdir=workdir merged
+
+# Verify both are visible and share the same inode through the overlay
+test -f merged/usr/bin/perl
+test -f merged/usr/bin/perl5.36.0
+test "$(stat -c %i merged/usr/bin/perl)" = "$(stat -c %i merged/usr/bin/perl5.36.0)"
+
+# Simulate containers/storage ID-mapped copy walk:
+# 1. chown the first hardlink encountered
+chown "$(id -u):$(id -g)" merged/usr/bin/perl5.36.0
+
+# 2. Remove the second hardlink
+rm merged/usr/bin/perl
+
+# 3. Re-create the second hardlink pointing to the first
+ln merged/usr/bin/perl5.36.0 merged/usr/bin/perl
+
+# Verify both files exist and have the same content
+test -f merged/usr/bin/perl
+test -f merged/usr/bin/perl5.36.0
+grep binary_content merged/usr/bin/perl
+grep binary_content merged/usr/bin/perl5.36.0
+
+# Also test the reverse order (perl first, then perl5.36.0)
+rm merged/usr/bin/perl5.36.0
+ln merged/usr/bin/perl merged/usr/bin/perl5.36.0
+test -f merged/usr/bin/perl5.36.0
+grep binary_content merged/usr/bin/perl5.36.0
+
+umount merged
+rm -rf lower upper workdir merged
+
 echo "All hard link tests passed!"

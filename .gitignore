@@ -1,6 +1,9 @@
 *.a
 *.cache
 *.o
+*.rlib
+/target/
+.cargo/
 .deps
 Makefile
 Makefile.in

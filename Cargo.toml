@@ -1,0 +1,24 @@
+[package]
+name = "fuse-overlayfs"
+version = "2.0.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+description = "Overlay Filesystem in Userspace"
+
+[dependencies]
+fuser = { version = "0.17.0", features = ["abi-7-40"] }
+nix = { version = "0.29.0", features = ["fs", "dir", "mount", "user", "signal", "resource"] }
+libc = "0.2.183"
+signal-hook = "0.3.18"
+parking_lot = "0.12.5"
+log = "0.4.29"
+env_logger = "0.11.9"
+thiserror = "2.0.18"
+rustc-hash = "2.1.1"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+lto = true
+strip = true
