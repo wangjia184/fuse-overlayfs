@@ -4,7 +4,15 @@ bin_PROGRAMS = fuse-overlayfs
 
 ACLOCAL_AMFLAGS = -Im4
 
-EXTRA_DIST = m4/gnulib-cache.m4 rpm/fuse-overlayfs.spec.template autogen.sh fuse-overlayfs.1.md utils.h NEWS tests/suid-test.c plugin.h plugin-manager.h fuse-overlayfs.h fuse_overlayfs_error.h
+EXTRA_DIST = m4/gnulib-cache.m4 rpm/fuse-overlayfs.spec.template autogen.sh fuse-overlayfs.1.md utils.h NEWS tests/suid-test.c plugin.h plugin-manager.h fuse-overlayfs.h fuse_overlayfs_error.h \
+	tests/test-copyup.sh \
+	tests/test-dir-ops.sh \
+	tests/test-hardlinks.sh \
+	tests/test-readonly.sh \
+	tests/test-rename.sh \
+	tests/test-special-files.sh \
+	tests/test-symlinks.sh \
+	tests/test-xattr.sh
 
 AM_CPPFLAGS = -DPKGLIBEXECDIR='"$(pkglibexecdir)"'
 
