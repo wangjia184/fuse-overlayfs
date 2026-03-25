@@ -1,0 +1,194 @@
+name: Rust Test
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      run: cargo fmt --check
+
+    - name: Clippy
+      run: cargo clippy --release -- -D warnings
+
+    - name: Build
+      run: cargo build --release
+
+    - name: Unit tests
+      run: cargo test --release
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuse-overlayfs-x86_64
+        path: target/release/fuse-overlayfs
+
+  integration-test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - test: ovl-whiteouts
+          - test: no-ovl-whiteouts
+    env:
+      GOPATH: /root/go
+      TAGS: exclude_graphdriver_devicemapper exclude_graphdriver_btrfs no_libsubid
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: Download binary
+      uses: actions/download-artifact@v4
+      with:
+        name: fuse-overlayfs-x86_64
+        path: .
+
+    - name: Install binary
+      run: |
+        chmod +x fuse-overlayfs
+        sudo cp fuse-overlayfs /usr/bin/fuse-overlayfs
+        sudo cp fuse-overlayfs /sbin/fuse-overlayfs
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -q -y
+        sudo apt-get install -q -y attr fuse3 libfuse3-dev gcc make git python3 \
+          libdevmapper-dev btrfs-progs libbtrfs-dev go-md2man parallel wget pkg-config \
+          g++ python3-setuptools podman e2fsprogs fuse2fs bats
+
+        sudo mkdir -p /lower /upper /mnt $GOPATH/src/github.com/containers
+        sudo sh -c "cd $GOPATH/src/github.com/containers; git clone --depth=1 https://github.com/containers/storage"
+        sudo TAGS="$TAGS" GOPATH=$GOPATH sh -c "(cd $GOPATH/src/github.com/containers/storage; sed -i -e 's|^AUTOTAGS.*$|AUTOTAGS := $TAGS|' Makefile; make GO111MODULE=on containers-storage)"
+        sudo sh -c "(cd /; git clone https://github.com/amir73il/unionmount-testsuite.git)"
+
+    - name: Run integration tests
+      run: |
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0 || true
+
+        # Run our test scripts
+        for t in tests/test-*.sh; do
+          echo "=== Running $t ==="
+          sudo bash "$t"
+        done
+
+        sudo tests/unlink.sh
+
+        case "${{ matrix.test }}" in
+          ovl-whiteouts)
+            sudo sh -c "(cd /unionmount-testsuite; unshare -m ./run --ov --fuse=fuse-overlayfs --xdev)"
+            sudo sh -c "(cd /root/go/src/github.com/containers/storage/tests; JOBS=1 STORAGE_OPTION=overlay.mount_program=/sbin/fuse-overlayfs STORAGE_DRIVER=overlay unshare -m ./test_runner.bash)"
+            tests/unpriv.sh
+          ;;
+          no-ovl-whiteouts)
+            sudo sh -c "(cd /unionmount-testsuite; FUSE_OVERLAYFS_DISABLE_OVL_WHITEOUT=1 unshare -m ./run --ov --fuse=fuse-overlayfs --xdev)"
+            sudo sh -c "(cd /root/go/src/github.com/containers/storage/tests; JOBS=1 FUSE_OVERLAYFS_DISABLE_OVL_WHITEOUT=1 STORAGE_OPTION=overlay.mount_program=/sbin/fuse-overlayfs STORAGE_DRIVER=overlay unshare -m ./test_runner.bash)"
+            FUSE_OVERLAYFS_DISABLE_OVL_WHITEOUT=1 tests/unpriv.sh
+          ;;
+        esac
+
+  cross-build:
+    runs-on: ubuntu-latest
+    name: Cross-build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            arch: aarch64
+          - target: armv7-unknown-linux-gnueabihf
+            arch: armv7l
+          - target: s390x-unknown-linux-gnu
+            arch: s390x
+          - target: powerpc64le-unknown-linux-gnu
+            arch: ppc64le
+          - target: riscv64gc-unknown-linux-gnu
+            arch: riscv64
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Install cross
+      run: cargo install cross --git https://github.com/cross-rs/cross --tag v0.2.5
+
+    - name: Cross-build
+      run: cross build --release --target ${{ matrix.target }}
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuse-overlayfs-${{ matrix.arch }}
+        path: target/${{ matrix.target }}/release/fuse-overlayfs
+
+  release:
+    needs: [build, cross-build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: /tmp/artifacts
+
+    - name: Create release artifacts
+      run: |
+        mkdir -p /tmp/release
+        for arch in x86_64 aarch64 armv7l s390x ppc64le riscv64; do
+          cp "/tmp/artifacts/fuse-overlayfs-${arch}/fuse-overlayfs" "/tmp/release/fuse-overlayfs-${arch}"
+          chmod +x "/tmp/release/fuse-overlayfs-${arch}"
+        done
+        echo "$(git log -1 --pretty=%ct)" > /tmp/release/SOURCE_DATE_EPOCH
+
+    - name: SHA256SUMS
+      run: (cd /tmp/release; sha256sum *) | tee /tmp/SHA256SUMS
+
+    - name: The sha256sum of the SHA256SUMS file
+      run: sha256sum /tmp/SHA256SUMS
+
+    - name: Prepare the release note
+      run: |
+        tag="${GITHUB_REF##*/}"
+        cat << EOF | tee /tmp/release-note.txt
+        #### About the binaries
+        The binaries were built automatically on GitHub Actions.
+        The build log is available for 90 days: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        EOF
+
+    - name: Create release
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        tag="${GITHUB_REF##*/}"
+        gh release create -F /tmp/release-note.txt --draft --title "${tag}" "${tag}" /tmp/release/* /tmp/SHA256SUMS
