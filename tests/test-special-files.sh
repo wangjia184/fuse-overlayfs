@@ -16,9 +16,17 @@ cd "$TESTDIR"
 
 MERGED="$TESTDIR/merged"
 
+# Helper: check if mknod for device nodes works (fails in user namespaces)
+CAN_MKNOD=true
+if ! mknod "$TESTDIR/.mknod_test" c 1 3 2>/dev/null; then
+    CAN_MKNOD=false
+fi
+rm -f "$TESTDIR/.mknod_test"
+
 # ========================================
 # Test 1: Create character device
 # ========================================
+if $CAN_MKNOD; then
 echo "=== Test 1: mknod character device ==="
 mkdir -p lower upper workdir merged
 
@@ -33,10 +41,14 @@ test "$(stat -c '%t:%T' merged/chardev)" = "1:3"
 
 umount merged
 rm -rf lower upper workdir merged
+else
+echo "=== Test 1: SKIPPED (mknod not available) ==="
+fi
 
 # ========================================
 # Test 2: Create block device
 # ========================================
+if $CAN_MKNOD; then
 echo "=== Test 2: mknod block device ==="
 mkdir -p lower upper workdir merged
 
@@ -49,6 +61,9 @@ test "$(stat -c '%t:%T' merged/blockdev)" = "7:0"
 
 umount merged
 rm -rf lower upper workdir merged
+else
+echo "=== Test 2: SKIPPED (mknod not available) ==="
+fi
 
 # ========================================
 # Test 3: Create FIFO (named pipe)
@@ -199,6 +214,7 @@ rm -rf lower upper workdir merged
 # ========================================
 # Test 11: Device in lower layer preserved
 # ========================================
+if $CAN_MKNOD; then
 echo "=== Test 11: Device in lower layer ==="
 mkdir -p lower upper workdir merged
 
@@ -212,6 +228,9 @@ test "$(stat -c '%t:%T' merged/lowerdev)" = "5:1"
 
 umount merged
 rm -rf lower upper workdir merged
+else
+echo "=== Test 11: SKIPPED (mknod not available) ==="
+fi
 
 # ========================================
 # Test 12: FIFO in lower layer preserved

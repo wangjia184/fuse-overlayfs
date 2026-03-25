@@ -141,12 +141,18 @@ echo "=== Test 7: Read-only with special files ==="
 mkdir -p lower merged
 
 mkfifo lower/fifo
-mknod lower/cdev c 1 3
+if mknod lower/cdev c 1 3 2>/dev/null; then
+    HAS_CDEV=true
+else
+    HAS_CDEV=false
+fi
 
 fuse-overlayfs -o lowerdir=lower merged
 
 test -p merged/fifo
-test -c merged/cdev
+if $HAS_CDEV; then
+    test -c merged/cdev
+fi
 
 umount merged
 rm -rf lower merged
