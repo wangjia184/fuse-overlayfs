@@ -1,5 +1,4 @@
-# Makefile for fuse-overlayfs (Rust version)
-# Usage: make -f Makefile.rust [target]
+# Makefile for fuse-overlayfs
 
 CARGO ?= cargo
 CARGO_HOME ?= .cargo
@@ -56,9 +55,9 @@ integration-test: build
 	echo "=== Results: $$passed passed, $$failed failed ==="; \
 	if [ $$failed -gt 0 ]; then exit 1; fi
 
-# Run a single integration test: make -f Makefile.rust test-single TEST=tests/test-copyup.sh
+# Run a single integration test: make test-single TEST=tests/test-copyup.sh
 test-single: build
-	@if [ -z "$(TEST)" ]; then echo "Usage: make -f Makefile.rust test-single TEST=tests/test-copyup.sh"; exit 1; fi
+	@if [ -z "$(TEST)" ]; then echo "Usage: make test-single TEST=tests/test-copyup.sh"; exit 1; fi
 	PATH="$(CURDIR)/target/release:$$PATH" bash "$(TEST)"
 
 # All tests
