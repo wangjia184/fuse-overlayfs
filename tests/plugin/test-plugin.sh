@@ -4,8 +4,7 @@ set -e
 
 make
 
-BIN=fuse-overlayfs
-BIN=../../fuse-overlayfs
+BIN=$(command -v fuse-overlayfs || echo ../../fuse-overlayfs)
 
 cleanup()
 {
