@@ -2,11 +2,24 @@
 
 set -xeuo pipefail
 
+# Use docker if available, otherwise podman
+if command -v docker &>/dev/null; then
+    CONTAINER_RUNTIME=docker
+elif command -v podman &>/dev/null; then
+    CONTAINER_RUNTIME=podman
+else
+    echo "ERROR: neither docker nor podman found" >&2
+    exit 1
+fi
+
+# Use python3 if available, otherwise python
+PYTHON=$(command -v python3 || command -v python)
+
 mkdir lower:1 upper:2 workdir:3 merged
 
 fuse-overlayfs -o 'sync=0,lowerdir=lower\\:1,upperdir=upper\\:2,workdir=workdir\\:3,suid,dev' merged
 
-docker run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y glibc-common gedit
+$CONTAINER_RUNTIME run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y glibc-common gedit
 
 umount merged
 
@@ -30,14 +43,14 @@ stat -c %A upper/suid | grep s
 stat -c %a upper/nosuid | grep -v s
 
 # Install some big packages
-docker run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y emacs texlive
+$CONTAINER_RUNTIME run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y emacs texlive
 
-docker run --rm -v $(pwd)/merged:/merged fedora sh -c 'rm /merged/usr/share/glib-2.0/schemas/gschemas.compiled; glib-compile-schemas /merged/usr/share/glib-2.0/schemas/'
+$CONTAINER_RUNTIME run --rm -v $(pwd)/merged:/merged fedora sh -c 'rm /merged/usr/share/glib-2.0/schemas/gschemas.compiled; glib-compile-schemas /merged/usr/share/glib-2.0/schemas/'
 
 umount merged
 fuse-overlayfs -o sync=0,lowerdir=lower,upperdir=upper,workdir=workdir,suid,dev merged
 
-docker run --rm -v $(pwd)/merged:/merged fedora sh -c 'rm -rf /merged/usr/share/glib-2.0/'
+$CONTAINER_RUNTIME run --rm -v $(pwd)/merged:/merged fedora sh -c 'rm -rf /merged/usr/share/glib-2.0/'
 
 tar -c --to-stdout $(pwd)/merged > /dev/null
 
@@ -48,11 +61,11 @@ mkdir upper workdir lower
 # fast_ino_check
 fuse-overlayfs -o fast_ino_check=1,sync=0,lowerdir=lower,upperdir=upper,workdir=workdir,suid,dev merged
 
-docker run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y glibc-common gedit
+$CONTAINER_RUNTIME run --rm -v $(pwd)/merged:/merged fedora dnf --use-host-config --installroot /merged --releasever 41 install -y glibc-common gedit
 
 mkdir merged/a-directory
 
-python -c 'import socket; socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM).bind("merged/unix-socket")'
+$PYTHON -c 'import socket; socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM).bind("merged/unix-socket")'
 
 setfattr -n user.foo -v bar merged/a-directory
 getfattr -d merged/a-directory | grep bar
