@@ -36,7 +36,7 @@ fn read_proc_id(path: &str) -> Option<u32> {
 /// Format: colon-separated triples of host:to:len.
 pub fn parse_mappings(s: &str) -> Result<Vec<IdMapping>, String> {
     let parts: Vec<&str> = s.split(':').filter(|p| !p.is_empty()).collect();
-    if !parts.len().is_multiple_of(3) {
+    if parts.len() % 3 != 0 {
         return Err(format!("invalid mapping specified: {}", s));
     }
 

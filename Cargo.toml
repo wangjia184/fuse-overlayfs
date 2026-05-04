@@ -2,8 +2,21 @@
 name = "fuse-overlayfs"
 version = "2.0.0"
 edition = "2024"
+rust-version = "1.85.0"
 license = "GPL-2.0-or-later"
 description = "Overlay Filesystem in Userspace"
+repository = "https://github.com/containers/fuse-overlayfs"
+homepage = "https://github.com/containers/fuse-overlayfs"
+readme = "README.md"
+keywords = ["fuse", "overlayfs", "filesystem", "containers"]
+categories = ["filesystem"]
+exclude = [
+    ".github/",
+    "tests/",
+    "clippy",
+    "Containerfile.*",
+    "AGENTS.md",
+]
 
 [dependencies]
 fuser = { version = "0.17.0", features = ["abi-7-40"] }
